@@ -15,14 +15,21 @@ Microcrawler Web Application written in Elixir / Phoenix
 - [elixir](http://elixir-lang.org/)
 - [phoenix](http://www.phoenixframework.org/)
 - [nodejs / npm](https://nodejs.org/en/)
-- [PostgreSQL](https://www.postgresql.org/)
+
+### Optional
+
+- [docker](https://www.docker.com/)
+
+## Required Services
+
+- couchbase
+- elasticsearch
 
 ## Getting Started
 
 To start your Phoenix app:
 
   * Install dependencies with `mix deps.get`
-  * Create and migrate your database with `mix ecto.create && mix ecto.migrate`
   * Install Node.js dependencies with `npm install`
   * Build assets with `npm run gulp`
   * Start Phoenix endpoint with `mix phoenix.server`

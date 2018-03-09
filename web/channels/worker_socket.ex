@@ -3,7 +3,7 @@ defmodule MicrocrawlerWebapp.WorkerSocket do
 
   require Logger
 
-  alias MicrocrawlerWebapp.Accounts
+  alias MicrocrawlerWebapp.Users
 
   ## Channels
   channel "worker:*", MicrocrawlerWebapp.WorkerChannel
@@ -25,34 +25,44 @@ defmodule MicrocrawlerWebapp.WorkerSocket do
   # performing token verification on connect.
   def connect(%{"guardian_token" => jwt}, socket) do
     case Guardian.decode_and_verify(jwt) do
-      {:ok, %{"email" => email, "token" => token, "typ" => "worker"}} ->
-        case Accounts.get(email) do
-          {:ok, account} ->
-            case account.token == token do
-              true ->
-                {:ok, socket}
-              false ->
-                Logger.debug "worker expired token '#{token}' for account '#{email}'"
-                :error
-            end
-          error ->
-            Logger.debug "worker account '#{email}' not found: #{inspect(error)}"
-            :error
-        end
+      {:ok, %{"email" => email, "token" => token}} ->
+        validate(email, token, socket)
       error ->
-        Logger.debug "worker jwt '#{jwt}' verification failed with result: #{inspect(error)}"
+        Logger.debug(
+          "worker jwt '#{jwt}' verification failed " <>
+          "with result: #{inspect(error)}"
+        )
         :error
     end
   end
 
-  # Socket id's are topics that allow you to identify all sockets for a given user:
+  defp validate(email, token, socket) do
+    case Users.get(email) do
+      {:ok, user} ->
+        case user.token == token do
+          true ->
+            {:ok, socket}
+          false ->
+            Logger.debug "worker expired token '#{token}' for user '#{email}'"
+            :error
+        end
+      error ->
+        Logger.debug "worker user '#{email}' not found: #{inspect(error)}"
+        :error
+    end
+  end
+
+  # Socket id's are topics that allow you to identify all sockets
+  # for a given user:
   #
   #     def id(socket), do: "users_socket:#{socket.assigns.user_id}"
   #
   # Would allow you to broadcast a "disconnect" event and terminate
   # all active sockets and channels for a given user:
   #
-  #     MicrocrawlerWebapp.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})
+  #     MicrocrawlerWebapp.Endpoint.broadcast(
+  #       "users_socket:#{user.id}", "disconnect", %{}
+  #     )
   #
   # Returning `nil` makes this socket anonymous.
   def id(_socket), do: nil

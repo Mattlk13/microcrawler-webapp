@@ -40,11 +40,11 @@ config :amqp,
   vhost: System.get_env("AMQP_VHOST") || "/",
   hostname: System.get_env("AMQP_HOSTNAME") || "localhost"
 
-# Configure your database
-config :microcrawler_webapp, MicrocrawlerWebapp.Repo,
-  adapter: Ecto.Adapters.Postgres,
-  username: System.get_env("POSTGRES_USERNAME") || "postgres",
-  password: System.get_env("POSTGRES_PASSWORD") || "postgres",
-  database: System.get_env("POSTGRES_DATABASE") || "microcrawler_webapp_dev",
-  hostname: System.get_env("POSTGRES_HOSTNAME") || "localhost",
-  pool_size: 10
+config :microcrawler_webapp, MicrocrawlerWebapp.Couchbase,
+  url: System.get_env("GAUC_URL") || "http://localhost:5000",
+  bucket: System.get_env("GAUC_BUCKET") || "default"
+
+config :microcrawler_webapp, MicrocrawlerWebapp.Elasticsearch,
+  url: System.get_env("ELASTIC_URL") || "http://elastic:changeme@localhost:9200",
+  index: System.get_env("ELASTIC_INDEX") || "default",
+  doc_type: System.get_env("ELASTIC_DOC_TYPE") || "default"

@@ -1,4 +1,8 @@
 defmodule MicrocrawlerWebapp.IpInfoLoader do
+  @moduledoc """
+  TODO
+  """
+
   use Bitwise
   require Logger
 
@@ -9,6 +13,7 @@ defmodule MicrocrawlerWebapp.IpInfoLoader do
     |> Enum.map(&Path.join(dir ++ [&1]))
     |> Enum.reduce([], &process_file/2)
     |> Enum.sort
+    |> merge
     |> List.to_tuple
     IO.puts "IP files loaded"
     res
@@ -34,7 +39,8 @@ defmodule MicrocrawlerWebapp.IpInfoLoader do
 
   defp process_file(filename, lines) do
     IO.puts "Loading #{filename}"
-    File.stream!(filename, [:read])
+    filename
+    |> File.stream!([:read])
     |> Enum.reduce(lines, &process_line/2)
   end
 
@@ -45,17 +51,10 @@ defmodule MicrocrawlerWebapp.IpInfoLoader do
     end
   end
 
-  defp parse_line([reg, code, "ipv4", ip, count, _date, status | _])
+  defp parse_line([_reg, code, "ipv4", ip, count, _date, _status | _])
   when byte_size(code) == 2 do
     start = ip_to_int(ip)
-    {:ok, {
-      start,
-      start + String.to_integer(count) - 1,
-      code,
-      :ipv4,
-      String.to_atom(status),
-      String.to_atom(reg)
-    }}
+    {:ok, {start, start + String.to_integer(count) - 1, code}}
   end
 
   defp parse_line([_, _, "ipv6" | _]), do: :error
@@ -66,10 +65,37 @@ defmodule MicrocrawlerWebapp.IpInfoLoader do
     Logger.debug ~s(UNKNOWN: #{Enum.join(line, "|")})
     :error
   end
+
+  defp merge([]) do
+    []
+  end
+
+  defp merge([ip | ip_infos]) do
+    Enum.reverse merge(ip_infos, ip, [])
+  end
+
+  defp merge([], last, merged) do
+    [last | merged]
+  end
+
+  defp merge([ip | ip_infos], {last_from, last_to, last_code} = last, merged) do
+    case ip do
+      {from, to, code} when last_to + 1 == from and last_code == code ->
+        merge(ip_infos, {last_from, to, code}, merged)
+      _ ->
+        merge(ip_infos, ip, [last | merged])
+    end
+  end
 end
 
 defmodule MicrocrawlerWebapp.IpInfo do
+  @moduledoc """
+  TODO
+  """
+
   require MicrocrawlerWebapp.IpInfoLoader
+
+  alias MicrocrawlerWebapp.IpInfoLoader
 
   @dir ["data", "ip"]
 
@@ -81,7 +107,7 @@ defmodule MicrocrawlerWebapp.IpInfo do
   @external_resource Path.join(@dir ++ ["delegated-ripencc-latest"])
 
   def for(ip) do
-    search(MicrocrawlerWebapp.IpInfoLoader.ip_to_int(ip), all_ranges)
+    search(IpInfoLoader.ip_to_int(ip), all_ranges)
   end
 
   defp search(ip, ranges) do
@@ -94,15 +120,15 @@ defmodule MicrocrawlerWebapp.IpInfo do
 
   defp bsearch(ip, ranges, low, high) do
     mid = div(low + high, 2)
-    {start, stop, code, type, status, reg} = elem(ranges, mid)
+    {start, stop, code} = elem(ranges, mid)
     case {ip >= start, ip <= stop} do
-      {true, true}  -> {:ok, {code, type, status, reg}}
+      {true, true}  -> {:ok, code}
       {true, false} -> bsearch(ip, ranges, mid + 1, high)
       {false, true} -> bsearch(ip, ranges, low, mid - 1)
     end
   end
 
-  infos = MicrocrawlerWebapp.IpInfoLoader.get_ip_infos(["data", "ip"])
+  infos = IpInfoLoader.get_ip_infos(["data", "ip"])
 
   defp all_ranges do
     unquote(Macro.escape(infos))

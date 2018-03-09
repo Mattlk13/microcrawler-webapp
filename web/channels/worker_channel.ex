@@ -1,10 +1,23 @@
 defmodule MicrocrawlerWebapp.WorkerChannel do
+  @moduledoc """
+  TODO
+  """
+
   use Phoenix.Channel
 
   require Logger
 
   alias MicrocrawlerWebapp.ActiveWorkers
+  alias MicrocrawlerWebapp.Couchbase
+  alias MicrocrawlerWebapp.Elasticsearch
   alias MicrocrawlerWebapp.Endpoint
+
+  alias AMQP.Basic
+  alias AMQP.Connection
+  alias AMQP.Channel
+  alias AMQP.Queue
+  alias AMQP.Basic
+  alias MicrocrawlerWebapp.IpInfo
 
   def send_joined_workers_info() do
     Endpoint.broadcast("worker:lobby", "send_worker_info", %{})
@@ -13,28 +26,29 @@ defmodule MicrocrawlerWebapp.WorkerChannel do
   def join("worker:lobby", worker_info, socket) do
     Logger.debug "Received join - worker:lobby"
     Logger.debug Poison.encode_to_iodata!(worker_info, pretty: true)
-    Logger.debug inspect(self)
+    Logger.debug inspect(self())
 
     socket = save_worker_info(socket, worker_info)
-    send(self, :after_join)
+    send(self(), :after_join)
 
     amqp_username = Application.fetch_env!(:amqp, :username)
     amqp_password = Application.fetch_env!(:amqp, :password)
     amqp_hostname = Application.fetch_env!(:amqp, :hostname)
     amqp_uri = "amqp://#{amqp_username}:#{amqp_password}@#{amqp_hostname}"
 
-    {:ok, conn} = AMQP.Connection.open(amqp_uri)
-    {:ok, chan} = AMQP.Channel.open(conn)
+    {:ok, conn} = Connection.open(amqp_uri)
+    {:ok, chan} = Channel.open(conn)
 
     socket = assign(socket, :rabb_conn, conn)
     socket = assign(socket, :rabb_chan, chan)
 
-    AMQP.Queue.declare(chan, "workq", durable: true)
-    AMQP.Basic.qos(chan, prefetch_count: 1)
-    AMQP.Basic.consume(chan, "workq", nil)
+    Queue.declare(chan, "workq", durable: true)
+    Basic.qos(chan, prefetch_count: 1)
+    Basic.consume(chan, "workq", nil)
 
     # TODO:
-    # - nejak je potreba resit, kdyz conn spadne a take obracene, ze by link na conn?
+    # - nejak je potreba resit, kdyz conn spadne a take obracene,
+    #   ze by link na conn?
     {:ok, %{msg: "Welcome!"}, socket}
   end
 
@@ -56,7 +70,7 @@ defmodule MicrocrawlerWebapp.WorkerChannel do
 
   def handle_info(msg, socket) do
     Logger.debug inspect(msg)
-    Logger.debug inspect(self)
+    Logger.debug inspect(self())
     # IO.inspect socket
     {:noreply, socket}
   end
@@ -65,7 +79,9 @@ defmodule MicrocrawlerWebapp.WorkerChannel do
     Logger.debug "Received event - ping"
     Logger.debug Poison.encode_to_iodata!(payload, pretty: true)
     ActiveWorkers.update_joined_worker_info(%{ping: payload})
-    push socket, "pong", Map.merge(payload, %{ts: :os.system_time(:milli_seconds)})
+    push(
+      socket, "pong", Map.merge(payload, %{ts: :os.system_time(:milli_seconds)})
+    )
     Logger.debug "Connected: #{inspect(ActiveWorkers.joined_workers)}"
     {:reply, {:ok, payload}, socket}
   end
@@ -73,10 +89,63 @@ defmodule MicrocrawlerWebapp.WorkerChannel do
   def handle_in("done", payload, socket) do
     Logger.debug "Received event - done"
     Logger.debug Poison.encode_to_iodata!(payload, pretty: true)
-    AMQP.Basic.ack(
+    Basic.ack(
       socket.assigns[:rabb_chan],
       socket.assigns[:rabb_meta].delivery_tag
     )
+
+    request = payload
+    |> Map.get("request")
+    |> Map.delete("type")
+    results = Map.get(payload, "results")
+
+    results
+    |> Enum.filter(fn(res) ->
+      Map.fetch!(res, "type") == "url"
+    end)
+    |> Enum.uniq
+    |> Enum.shuffle
+    # |> Logger.debug
+    |> Enum.each(fn(res) ->
+      # TODO: Use key 'crawler' instead of 'processor'
+      key = "url-#{Map.fetch!(res, "processor")}-#{Map.fetch!(res, "url")}"
+      key_hash = Base.encode16(:crypto.hash(:sha256, key))
+
+      case Couchbase.get(key_hash) do
+        %{"error" => "The key does not exist on the server"} ->
+          new_doc = res
+          # |> Map.put_new("type", "url")
+          |> Map.put_new("uuid", UUID.uuid4())
+          Couchbase.set(key_hash, new_doc)
+          Elasticsearch.index(key_hash, new_doc)
+          channel = socket.assigns[:rabb_chan]
+          payload = Poison.encode!(res)
+          Basic.publish(channel, "", "workq", payload, persistent: true)
+        _ -> nil
+      end
+    end)
+
+    results
+    |> Enum.filter(fn(res) ->
+      Map.fetch!(res, "type") == "data"
+    end)
+    |> Enum.uniq
+    # |> Logger.debug
+    |> Enum.each(fn(res) ->
+      key = "data-#{Poison.encode!(res)}"
+      key_hash = Base.encode16(:crypto.hash(:sha256, key))
+
+      case Couchbase.get(key_hash) do
+        %{"error" => "The key does not exist on the server"} ->
+          new_doc = res
+          # |> Map.put_new("type", "url")
+          |> Map.put_new("request", request)
+          Couchbase.set(key_hash, new_doc)
+          Elasticsearch.index(key_hash, new_doc)
+        _ -> nil
+      end
+    end)
+
     {:noreply, socket}
   end
 
@@ -97,9 +166,9 @@ defmodule MicrocrawlerWebapp.WorkerChannel do
 
   def terminate(reason, socket) do
     Logger.debug inspect(reason)
-    Logger.debug inspect(self)
+    Logger.debug inspect(self())
     Logger.debug inspect(socket)
-    AMQP.Connection.close(socket.assigns[:rabb_conn])
+    Connection.close(socket.assigns[:rabb_conn])
     :ok
   end
 
@@ -126,8 +195,8 @@ defmodule MicrocrawlerWebapp.WorkerChannel do
   end
 
   defp country_code(ip) do
-    case MicrocrawlerWebapp.IpInfo.for(ip) do
-      {:ok, info} -> elem(info, 0)
+    case IpInfo.for(ip) do
+      {:ok, info} -> info
       :error      -> ""
     end
   end

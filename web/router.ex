@@ -12,7 +12,8 @@ defmodule MicrocrawlerWebapp.Router do
   pipeline :browser_session do
     plug Guardian.Plug.VerifySession
     plug Guardian.Plug.LoadResource
-    plug Guardian.Plug.EnsureAuthenticated, handler: MicrocrawlerWebapp.SignInController
+    plug Guardian.Plug.EnsureAuthenticated,
+      handler: MicrocrawlerWebapp.SignInController
   end
 
   pipeline :static_layout do
@@ -38,11 +39,11 @@ defmodule MicrocrawlerWebapp.Router do
     plug Guardian.Plug.LoadResource
   end
 
-  scope "/account", MicrocrawlerWebapp do
+  scope "/user", MicrocrawlerWebapp do
     pipe_through [:browser, :browser_session, :static_layout]
 
-    get "/", AccountController, :index
-    post "/", AccountController, :renew
+    get "/", UserController, :index
+    post "/", UserController, :renew
   end
 
   scope "/signin_old", MicrocrawlerWebapp do
@@ -64,6 +65,8 @@ defmodule MicrocrawlerWebapp.Router do
 
     post "/auth/signin", AuthController, :sign_in
     post "/auth/signup", AuthController, :sign_up
+
+    get "/crawlers", CrawlersController, :index
   end
 
   # Other scopes may use custom stacks.
@@ -71,8 +74,9 @@ defmodule MicrocrawlerWebapp.Router do
     pipe_through [:api, :api_jwt_auth]
 
     # Testing route
+    post "/auth/renew_worker_jwt", AuthController, :renew_worker_jwt
     post "/auth/signout", AuthController, :sign_out
-    get  "/auth/user", AuthController, :user
+    get  "/auth/user", AuthController, :user_details
   end
 
   scope "/graphql", MicrocrawlerWebapp do

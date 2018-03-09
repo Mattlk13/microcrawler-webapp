@@ -3,7 +3,7 @@ defmodule MicrocrawlerWebapp.Mixfile do
 
   def project do
     [app: :microcrawler_webapp,
-     version: "0.0.1",
+     version: "0.0.2",
      elixir: "~> 1.2",
      elixirc_paths: elixirc_paths(Mix.env),
      compilers: [:phoenix, :gettext] ++ Mix.compilers,
@@ -18,7 +18,9 @@ defmodule MicrocrawlerWebapp.Mixfile do
   # Type `mix help compile.app` for more information.
   def application do
     [mod: {MicrocrawlerWebapp, []},
+      # TODO: Try to keep in
       applications: [
+        :elastix,
         :graphql,
         :phoenix,
         # :phoenix_pubsub_rabbitmq,
@@ -28,8 +30,8 @@ defmodule MicrocrawlerWebapp.Mixfile do
         :logger,
         :gettext,
         :phoenix_ecto,
-        :postgrex,
-        :amqp
+        :amqp,
+        :httpoison
       ]
     ]
   end
@@ -43,26 +45,26 @@ defmodule MicrocrawlerWebapp.Mixfile do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
-      # {:couchie, git: "https://github.com/nirvana/couchie.git"},
       {:comeonin, "~> 2.3"},
+      {:credo, "~> 0.4", only: [:dev, :test]},
       {:dialyxir, "~> 0.3.5", only: [:dev]},
+      {:elastix, "~> 0.2.0"},
       {:graphql, "~> 0.3"},
       {:guardian, "~> 0.13.0"},
+      {:httpoison, "~> 0.9.2"},
       {:phoenix, "~> 1.2.1", override: true},
       {:phoenix_pubsub, "~> 1.0"},
       {:phoenix_ecto, "~> 3.0"},
-      {:postgrex, ">= 0.0.0"},
-      # {:phoenix_pubsub_rabbitmq, "0.0.1"},
       {:phoenix_html, "~> 2.6"},
       {:phoenix_live_reload, "~> 1.0", only: :dev},
       {:poison, "~> 2.2.0", override: true},
       {:poolboy, "~> 1.5.1", override: true},
+      {:uuid, "~> 1.1" },
       {:gettext, "~> 0.11"},
       {:cowboy, "~> 1.0"},
       {:amqp_client, git: "https://github.com/jbrisbin/amqp_client.git", override: true},
       {:amqp, "~> 0.1.4"},
-      {:execjs, "~> 1.1"},
-      {:rustler, git: "https://github.com/korczis/rustler_mix.git",}
+      {:execjs, "~> 1.1"}
     ]
   end
 

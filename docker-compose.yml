@@ -1,18 +1,55 @@
 version: '2'
 services:
-  db:
-    image: postgres
-    environment:
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_USER: postgres
+  elasticsearch:
+    image: korczis/elasticsearch:5.2.1-couchbase
+    ports:
+      - "9091:9091"
+      - "9200:9200"
+      - "9300:9300"
+  couchbase:
+    image: korczis/couchbase:4.5.1
+    ports:
+      - "8091:8091"
+      - "8092:8092"
+      - "8093:8093"
+      - "8094:8094"
+      - "11207:11207"
+      - "11210:11210"
+      - "11211:11211"
+      - "18091:18091"
+      - "18092:18092"
+      - "18093:18093"
+    depends_on:
+      - elasticsearch
+    ulimits:
+      core: 100000000
+      memlock: 100000000
   rabbitmq:
     image: rabbitmq:3-management
-  webapp:
-    build: .
-    command: iex -S mix phoenix.server
     ports:
-      - "4000:4000"
-    depends_on:
-      - db
+      - "5672:5672"
+      - "15672:15672"
+  gauc:
+    image: korczis/gauc:0.1.20
     environment:
-      POSTGRES_HOSTNAME: db
+      COUCHBASE_URI: "couchbase://couchbase/default"
+      RUST_LOG: "debug"
+      RUST_BACKTRACE: 1
+      LCB_LOGLEVEL: 5
+    ports:
+      - "5000:5000"
+    entrypoint:
+      - "/cargo/bin/gauc"
+      - "-r"
+    depends_on:
+      - couchbase
+    restart: always
+  kibana:
+    image: korczis/kibana
+    environment:
+      ELASTICSEARCH_URL: "http://elastic:changeme@elasticsearch:9200"
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
